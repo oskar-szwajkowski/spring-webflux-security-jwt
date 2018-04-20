@@ -20,13 +20,22 @@
 package io.rapha.spring.reactive.security.auth.jwt;
 
 import com.nimbusds.jwt.SignedJWT;
+import io.rapha.spring.reactive.security.auth.JWTVerifier;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import java.text.ParseException;
 
 public class VerifySignedJWT{
+
     public static Mono<SignedJWT> check(String token) {
         try {
-            return Mono.just(SignedJWT.parse(token));
+            return Mono.just(SignedJWT.parse(token))
+                    .filter(JWTVerifier::verifyJWTHMAC)
+                    .switchIfEmpty(Mono.empty())
+                    .filter(JWTVerifier::verifyExpirationDate)
+                    .switchIfEmpty(Mono.empty());
         } catch (ParseException e) {
           return Mono.empty();
         }

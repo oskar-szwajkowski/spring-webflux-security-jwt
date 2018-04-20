@@ -22,7 +22,9 @@ package io.rapha.spring.reactive.security.auth;
 import io.rapha.spring.reactive.security.auth.jwt.JWTAuthorizationPayload;
 import io.rapha.spring.reactive.security.auth.jwt.UsernamePasswordAuthenticationFromJWTToken;
 import io.rapha.spring.reactive.security.auth.jwt.VerifySignedJWT;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
@@ -60,4 +62,5 @@ public class ServerHttpBearerAuthenticationConverter implements Function<ServerW
                 .map(UsernamePasswordAuthenticationFromJWTToken::create)
                 .filter(Objects::nonNull);
     }
+
 }
