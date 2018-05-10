@@ -33,6 +33,12 @@ import reactor.core.publisher.Mono;
 public class WebFilterChainServerJWTAuthenticationSuccessHandler
         implements ServerAuthenticationSuccessHandler {
 
+    private final JWTTokenService tokenService;
+
+    public WebFilterChainServerJWTAuthenticationSuccessHandler(JWTTokenService tokenService){
+        this.tokenService = tokenService;
+    }
+
     /**
      * A successful authentication object us used to create a JWT object and
      * added in the authorization header of the current WebExchange
@@ -51,12 +57,12 @@ public class WebFilterChainServerJWTAuthenticationSuccessHandler
         return webFilterExchange.getChain().filter(exchange);
     }
 
-    private static String getHttpAuthHeaderValue(Authentication authentication){
+    private String getHttpAuthHeaderValue(Authentication authentication){
         return String.join(" ","Bearer",tokenFromAuthentication(authentication));
     }
 
-    private static String tokenFromAuthentication(Authentication authentication){
-        return new JWTTokenService().generateToken(
+    private String tokenFromAuthentication(Authentication authentication){
+        return tokenService.generateToken(
                                             authentication.getName(),
                                             authentication.getCredentials(),
                                             authentication.getAuthorities());

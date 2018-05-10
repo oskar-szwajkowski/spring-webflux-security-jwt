@@ -25,7 +25,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+
+import java.security.InvalidParameterException;
 import java.text.ParseException;
+import java.time.DateTimeException;
 
 public class VerifySignedJWT{
 
@@ -33,11 +36,11 @@ public class VerifySignedJWT{
         try {
             return Mono.just(SignedJWT.parse(token))
                     .filter(JWTVerifier::verifyJWTHMAC)
-                    .switchIfEmpty(Mono.empty())
+                    .switchIfEmpty(Mono.error(new InvalidParameterException()))
                     .filter(JWTVerifier::verifyExpirationDate)
-                    .switchIfEmpty(Mono.empty());
+                    .switchIfEmpty(Mono.error(new DateTimeException("Token expired")));
         } catch (ParseException e) {
-          return Mono.empty();
+          return Mono.error(e);
         }
     }
 }

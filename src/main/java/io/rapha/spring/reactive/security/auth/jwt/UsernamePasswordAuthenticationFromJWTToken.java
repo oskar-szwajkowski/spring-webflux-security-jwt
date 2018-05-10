@@ -30,25 +30,71 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class UsernamePasswordAuthenticationFromJWTToken  {
+public class UsernamePasswordAuthenticationFromJWTToken {
 
-    public static Authentication create(Mono<SignedJWT> signedJWTMono) {
-        SignedJWT signedJWT = signedJWTMono.block();
-        String subject;
-        String auths;
-        List authorities;
+	public static Mono<Authentication> create(Mono<SignedJWT> signedJWTMono) {
+//		SignedJWT signedJWT = signedJWTMono.block();
+//		String subject;
+//		String auths;
+//		List authorities;
 
-        try {
-            subject = signedJWT.getJWTClaimsSet().getSubject();
-            auths = (String) signedJWT.getJWTClaimsSet().getClaim("auths");
-        } catch (ParseException e) {
-            return null;
-        }
-        authorities = Stream.of(auths.split(","))
-                .map(a -> new SimpleGrantedAuthority(a))
-                .collect(Collectors.toList());
+		//try {
+		return signedJWTMono.map(jwt -> {
+			try {
+				return new SubjectWithAuthorities(jwt.getJWTClaimsSet().getSubject(), (String) jwt.getJWTClaimsSet().getClaim("auths"));
+			} catch (ParseException e) {
+				return null;
+			}
+		})
+				.map(auth -> {
+							auth.setAuthoritiesList(
+									Stream.of(auth.getAuthorities().split(","))
+											.map(SimpleGrantedAuthority::new)
+											.collect(Collectors.toList()));
+							return auth;
+						})
+				.map(swa -> new UsernamePasswordAuthenticationToken(swa.getSubject(), null, swa.getAuthoritiesList()));
+//					.map(auth -> auth.setAuthoritiesList(Stream.of(auth.getAuthorities().split(","))
+//							.map(SimpleGrantedAuthority::new)
+//							.collect(Collectors.toList())))
+		//.map(new UsernamePasswordAuthenticationToken());
+		//subject = signedJWT.getJWTClaimsSet().getSubject();
+		//auths = (String) signedJWT.getJWTClaimsSet().getClaim("auths");
+		//} catch (ParseException e) {
+		//return null;
+		//}
+		//authorities = Stream.of(auths.split(","))
+		//		.map(SimpleGrantedAuthority::new)
+		//		.collect(Collectors.toList());
 
-            return new UsernamePasswordAuthenticationToken(subject, null, authorities);
+		//return new UsernamePasswordAuthenticationToken(subject, null, authorities);
+	}
 
-    }
+	private static class SubjectWithAuthorities {
+
+		private String subject;
+		private String authorities;
+		private List<SimpleGrantedAuthority> authoritiesList;
+
+		private SubjectWithAuthorities(String subject, String authorities) {
+			this.subject = subject;
+			this.authorities = authorities;
+		}
+
+		public void setAuthoritiesList(List<SimpleGrantedAuthority> authoritiesList) {
+			this.authoritiesList = authoritiesList;
+		}
+
+		public String getSubject() {
+			return subject;
+		}
+
+		public String getAuthorities() {
+			return authorities;
+		}
+
+		public List<SimpleGrantedAuthority> getAuthoritiesList() {
+			return authoritiesList;
+		}
+	}
 }

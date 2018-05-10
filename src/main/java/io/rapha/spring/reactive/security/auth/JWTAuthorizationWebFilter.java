@@ -19,8 +19,7 @@
  */
 package io.rapha.spring.reactive.security.auth;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.ComponentScan;
+import io.rapha.spring.reactive.security.auth.jwt.JWTErrorHandler;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
@@ -32,7 +31,7 @@ import org.springframework.security.web.server.context.NoOpServerSecurityContext
 import org.springframework.security.web.server.context.ServerSecurityContextRepository;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
-import org.springframework.stereotype.Component;
+import org.springframework.util.ErrorHandler;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
@@ -49,11 +48,21 @@ import java.util.function.Function;
  */
 public class JWTAuthorizationWebFilter implements WebFilter {
 
-    private ServerAuthenticationSuccessHandler authenticationSuccessHandler = new WebFilterChainServerAuthenticationSuccessHandler();
-    private final ReactiveAuthenticationManager authenticationManager = new JWTReactiveAuthenticationManager();
-    private ServerWebExchangeMatcher requiresAuthenticationMatcher = ServerWebExchangeMatchers.pathMatchers("/api/**");
-    private Function<ServerWebExchange, Mono<Authentication>> authenticationConverter = new ServerHttpBearerAuthenticationConverter();
-    private ServerSecurityContextRepository securityContextRepository = NoOpServerSecurityContextRepository.getInstance();
+    private ServerAuthenticationSuccessHandler authenticationSuccessHandler;
+    private final ReactiveAuthenticationManager authenticationManager;
+    private ServerWebExchangeMatcher requiresAuthenticationMatcher;
+    private Function<ServerWebExchange, Mono<Authentication>> authenticationConverter;
+    private ServerSecurityContextRepository securityContextRepository;
+    private JWTErrorHandler jwtErrorHandler;
+
+    public JWTAuthorizationWebFilter(JWTTokenService jwtTokenService){
+        authenticationSuccessHandler = new WebFilterChainServerAuthenticationSuccessHandler();
+        authenticationManager = new JWTReactiveAuthenticationManager();
+        requiresAuthenticationMatcher = ServerWebExchangeMatchers.pathMatchers("/api/**");
+        authenticationConverter = new ServerHttpBearerAuthenticationConverter(jwtTokenService);
+        securityContextRepository = NoOpServerSecurityContextRepository.getInstance();
+        jwtErrorHandler = new JWTErrorHandler();
+    }
 
     /**
      * Provide a custom filtering mechanism for WebExchanges matching a restricted path
@@ -69,10 +78,11 @@ public class JWTAuthorizationWebFilter implements WebFilter {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         return this.requiresAuthenticationMatcher.matches(exchange)
-                .filter(matchResult -> matchResult.isMatch())
+                .filter(ServerWebExchangeMatcher.MatchResult::isMatch)
                 .flatMap(matchResult -> this.authenticationConverter.apply(exchange))
                 .switchIfEmpty(chain.filter(exchange).then(Mono.empty()))
-                .flatMap(token -> authenticate(exchange, chain, token));
+                .flatMap(token -> authenticate(exchange, chain, token))
+                .onErrorResume(t -> jwtErrorHandler.handleError(t, exchange));
     }
 
     /**

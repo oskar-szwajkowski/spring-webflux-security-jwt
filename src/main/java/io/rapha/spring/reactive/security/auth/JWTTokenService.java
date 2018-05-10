@@ -22,10 +22,14 @@ package io.rapha.spring.reactive.security.auth;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.JWSObject;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import org.springframework.security.core.GrantedAuthority;
+import reactor.core.publisher.Mono;
 
+import java.security.InvalidParameterException;
+import java.text.ParseException;
 import java.util.Collection;
 import java.util.Date;
 import java.util.stream.Collectors;
@@ -36,6 +40,12 @@ import java.util.stream.Collectors;
  * If authentication is successful, a token is added in the response
  */
 public class JWTTokenService {
+
+    private GuestTokenWrapper guestToken;
+
+    public JWTTokenService(){
+        guestToken = new GuestTokenWrapper(generateGuestToken());
+    }
 
     /**
      * Create and sign a JWT object using information from the current
@@ -48,23 +58,79 @@ public class JWTTokenService {
      */
     public String generateToken(String subject, Object credentials, Collection<? extends GrantedAuthority> authorities) {
         //TODO refactor this nasty code
-// Prepare JWT with claims set
+        // Prepare JWT with claims set
         JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
                 .subject(subject)
-                .issuer("rapha.io")
-                .expirationTime(new Date(new Date().getTime() + 60 * 1000))
-                .claim("auths", authorities.parallelStream().map(auth -> (GrantedAuthority) auth).map(a -> a.getAuthority()).collect(Collectors.joining(",")))
+                .issuer("some.issuer")
+                .expirationTime(new Date(new Date().getTime() + 60 * 10000))
+                .claim("auths", authorities.parallelStream().map(auth -> (GrantedAuthority) auth).map(GrantedAuthority::getAuthority).collect(Collectors.joining(",")))
                 .build();
 
+        return serializeSignedJWT(signToken(claimsSet));
+    }
+
+    public Mono<SignedJWT> provideGuestToken(){
+        return Mono.just(guestToken.signedToken)
+                .filter(p -> isGuestTokenExpired())
+                .defaultIfEmpty(generateGuestToken());
+        //return Mono.just(isGuestTokenExpired() ? generateGuestToken() : guestToken.signedToken);
+    }
+
+    private SignedJWT generateGuestToken(){
+        JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+                .subject("guest")
+                .issuer("some.issuer")
+                .expirationTime(new Date(new Date().getTime() + 60 * 10000))
+                .claim("auths", "ROLE_GUEST")
+                .build();
+
+        regenerateGuestToken(signToken(claimsSet));
+
+        return guestToken.signedToken;
+    }
+
+    private synchronized void regenerateGuestToken(SignedJWT signedJWT){
+        guestToken = new GuestTokenWrapper(signedJWT);
+    }
+
+    private boolean isGuestTokenExpired(){
+        return guestToken.expirationTime.before(new Date());
+    }
+
+    private SignedJWT signToken(JWTClaimsSet claimsSet){
         SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claimsSet);
 
-// Apply the HMAC protection
+        // Apply the HMAC protection
         try {
             signedJWT.sign(new JWTSignerProvider().getSigner());
         } catch (JOSEException e) {
             e.printStackTrace();
         }
 
+        return signedJWT;
+    }
+
+    private String serializeSignedJWT(SignedJWT signedJWT){
         return signedJWT.serialize();
+    }
+
+    private class GuestTokenWrapper{
+        final SignedJWT signedToken;
+        final String serializedToken;
+        final Date expirationTime;
+
+        private GuestTokenWrapper(SignedJWT signedToken) {
+            if (!signedToken.getState().equals(JWSObject.State.SIGNED)) throw new InvalidParameterException("Token provided is not signed!");
+            this.signedToken = signedToken;
+            this.serializedToken = signedToken.serialize();
+            Date expirationTime = null;
+            try {
+                expirationTime = signedToken.getJWTClaimsSet().getExpirationTime();
+            } catch (ParseException e) {
+                e.printStackTrace();
+            } finally {
+                this.expirationTime = expirationTime;
+            }
+        }
     }
 }
